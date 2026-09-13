@@ -106,13 +106,22 @@
     <div class="card">
       <h3>推送渠道（任填其一或多选，留空即禁用）</h3>
       <div class="grid">
-        <label>Server酱 SendKey <input id="nt_serverchan_sendkey" placeholder="SCT..."></label>
-        <label>Bark 地址 <input id="nt_bark_url" placeholder="https://api.day.app/你的Key"></label>
-        <label>Telegram Token <input id="nt_telegram_token"></label>
-        <label>Telegram ChatID <input id="nt_telegram_chat_id"></label>
-        <label>企业微信 Webhook <input id="nt_wecom_webhook"></label>
-        <label>钉钉 Webhook <input id="nt_dingtalk_webhook" placeholder="https://oapi.dingtalk.com/robot/send?access_token=..."></label>
-        <label>钉钉加签密钥 <input id="nt_dingtalk_secret" placeholder="SEC...（未开加签留空）"></label>
+        <label>Server酱 SendKey
+          <input id="nt_serverchan_sendkey" placeholder="SCT 开头，如 SCT393xxxx">
+          <small>免费申请：<a href="https://sct.ftqq.com" target="_blank" rel="noopener">sct.ftqq.com</a> 微信扫码登录 → 点「SendUserMessage」复制 SendKey（SCT 开头）。推送到微信「方糖」服务号，别填成其他令牌</small>
+        </label>
+        <label>Bark 地址
+          <input id="nt_bark_url" placeholder="https://api.day.app/你的Key">
+          <small>iPhone 安装 Bark App 后，复制 App 内展示的推送 URL 粘贴到这里</small>
+        </label>
+        <label>Telegram Token <input id="nt_telegram_token" placeholder="123456:ABC-xxx（@BotFather 创建）"></label>
+        <label>Telegram ChatID <input id="nt_telegram_chat_id" placeholder="与机器人对话后从 getUpdates 获取"></label>
+        <label>企业微信 Webhook <input id="nt_wecom_webhook" placeholder="群设置 → 群机器人 → 添加，复制 Webhook 地址"></label>
+        <label>钉钉 Webhook
+          <input id="nt_dingtalk_webhook" placeholder="https://oapi.dingtalk.com/robot/send?access_token=...">
+          <small>群设置 → 智能群助手 → 添加机器人；安全设置选「加签」时，下方密钥需一并填写</small>
+        </label>
+        <label>钉钉加签密钥 <input id="nt_dingtalk_secret" placeholder="SEC...（未开启加签留空）"></label>
         <label>自定义 Webhook <input id="nt_custom_webhook" placeholder="POST {title,body,level}"></label>
         <label>代理(给TG用) <input id="nt_proxy" placeholder="http://127.0.0.1:7890"></label>
       </div>

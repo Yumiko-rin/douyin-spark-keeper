@@ -64,6 +64,8 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 18px; }
 .grid label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
 .grid small { color: var(--muted); }
+.grid small a { color: var(--accent-2); text-decoration: none; }
+.grid small a:hover { text-decoration: underline; }
 .pair input { width: 80px; }
 .row { display: flex; gap: 18px; flex-wrap: wrap; margin: 12px 0; }
 .switch-line { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
