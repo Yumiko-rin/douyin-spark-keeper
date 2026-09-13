@@ -76,6 +76,7 @@ $("#nav").addEventListener("click", (e) => {
     TOKEN = urlToken.trim();
     localStorage.setItem("spark_token", TOKEN);
     history.replaceState(null, "", location.pathname); // 把令牌从地址栏清掉
+    $("#tokenGate").classList.add("hidden");
   }
 })();
 
@@ -487,8 +488,9 @@ $("#btnClearLog").addEventListener("click", () => { $("#logBox").textContent = "
 async function boot() {
   try {
     await refreshState();
+    $("#tokenGate").classList.add("hidden"); // 令牌有效（或本机免令牌）直接进入
     setInterval(refreshState, 15000);
-  } catch (e) { /* boot 前已处理 401 */ }
+  } catch (e) { /* 401 已由 api() 弹出令牌输入框 */ }
 }
 
 /* 启动：先直接尝试——本机免令牌模式直接进入；需要令牌时 401 会自动弹出输入框 */

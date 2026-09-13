@@ -7,6 +7,14 @@ from douyin.parse import extract_days, extract_name, parse_row
 def test_extract_days_explicit():
     assert extract_days("侯，火花392天") == 392
     assert extract_days("火花 3 天") == 3
+    assert extract_days("捏麻麻滴 🔥3") == 3
+
+
+def test_extract_days_ignores_message_dates():
+    """自己发的定时消息预览「续火花 2026-09-13」不能被当成火花天数。"""
+    assert extract_days("签到~ 续火花 2026-09-13") is None
+    assert extract_days("{friend}，火花别灭呀 🔥") is None
+    assert extract_days("续火花 2026/09/13") is None
 
 
 def test_extract_days_requires_spark_keyword():

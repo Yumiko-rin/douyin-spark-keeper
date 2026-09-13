@@ -1,116 +1,331 @@
+/* ============================================================
+   火花管家 Pro —— Apple Liquid Glass 设计系统
+   依据 ui-ux-pro-max-skill / Liquid Glass 规范：
+   - 玻璃只用于导航与控件（material-role: navigation-controls）
+   - 内容层独立、保持可读（dense surfaces 不做重玻璃）
+   - 自适应半透明 + 镜面高光 + 流动形变过渡
+   - 颜色节制：强调色只给主行动与火花语义
+   - 回退：prefers-reduced-transparency / prefers-reduced-motion
+   ============================================================ */
 :root {
-  --bg: #0f1115;
-  --panel: #171a21;
-  --panel-2: #1d212b;
-  --line: #2a2f3c;
-  --text: #e8eaf0;
-  --muted: #8a91a3;
-  --accent: #ff5c5c;
-  --accent-2: #ff8a3d;
-  --ok: #4ade80;
+  --bg-0: #0b0d14;
+  --bg-1: #131722;
+  --glass: rgba(255, 255, 255, 0.055);
+  --glass-strong: rgba(255, 255, 255, 0.09);
+  --glass-border: rgba(255, 255, 255, 0.14);
+  --glass-inner: rgba(255, 255, 255, 0.16);
+  --panel-solid: rgba(17, 20, 30, 0.86);
+  --text: #f2f4f9;
+  --muted: #9aa2b8;
+  --accent: #ff6a5e;
+  --accent-2: #ff9a4d;
+  --ok: #5ee89a;
   --warn: #fbbf24;
-  --err: #f87171;
+  --err: #ff7b72;
+  --radius: 22px;
+  --radius-sm: 14px;
+  --motion: 0.28s cubic-bezier(0.32, 0.72, 0.24, 1);
 }
+
 * { box-sizing: border-box; }
+
+html, body { min-height: 100%; }
+
 body {
-  margin: 0; background: var(--bg); color: var(--text);
-  font: 14px/1.6 "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  margin: 0;
+  color: var(--text);
+  font: 14px/1.65 "SF Pro Text", "PingFang SC", "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  background: var(--bg-0);
+  overflow-x: hidden;
 }
+
+/* ---------- 环境光层：给玻璃提供可折射的色彩 ---------- */
+.ambient {
+  position: fixed; inset: 0; z-index: -1;
+  background:
+    radial-gradient(120% 90% at 85% -10%, #1c2140 0%, transparent 55%),
+    radial-gradient(100% 80% at -10% 110%, #241a2e 0%, transparent 55%),
+    linear-gradient(160deg, var(--bg-0), var(--bg-1) 60%, #10101a);
+}
+.ambient i {
+  content: ""; position: absolute; border-radius: 50%;
+  filter: blur(90px); opacity: 0.5; will-change: transform;
+}
+.ambient i:nth-child(1) {
+  width: 46vw; height: 46vw; left: -12vw; top: -16vw;
+  background: radial-gradient(circle, rgba(255, 106, 94, 0.34), transparent 65%);
+  animation: drift1 22s ease-in-out infinite alternate;
+}
+.ambient i:nth-child(2) {
+  width: 40vw; height: 40vw; right: -10vw; top: 22vh;
+  background: radial-gradient(circle, rgba(255, 154, 77, 0.22), transparent 65%);
+  animation: drift2 26s ease-in-out infinite alternate;
+}
+.ambient i:nth-child(3) {
+  width: 52vw; height: 52vw; left: 28vw; bottom: -28vw;
+  background: radial-gradient(circle, rgba(88, 101, 242, 0.18), transparent 65%);
+  animation: drift1 30s ease-in-out infinite alternate-reverse;
+}
+@keyframes drift1 { to { transform: translate(6vw, 4vh) scale(1.08); } }
+@keyframes drift2 { to { transform: translate(-5vw, -3vh) scale(0.94); } }
+
+/* ---------- 顶栏：玻璃导航（Liquid Glass 主战场） ---------- */
 header {
-  display: flex; align-items: center; gap: 16px;
-  padding: 10px 20px; background: var(--panel);
-  border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 10;
+  display: flex; align-items: center; gap: 14px;
+  margin: 14px 16px 0; padding: 10px 18px;
+  border-radius: var(--radius);
+  background: linear-gradient(150deg, var(--glass-strong), var(--glass));
+  backdrop-filter: blur(26px) saturate(170%);
+  -webkit-backdrop-filter: blur(26px) saturate(170%);
+  border: 1px solid var(--glass-border);
+  box-shadow:
+    0 18px 50px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 var(--glass-inner),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.04);
+  position: sticky; top: 12px; z-index: 50;
 }
-.brand { font-size: 17px; font-weight: 700; white-space: nowrap; }
-.brand .pro { color: var(--accent-2); font-size: 12px; vertical-align: super; }
+.brand {
+  font-size: 17px; font-weight: 700; white-space: nowrap;
+  letter-spacing: 0.02em;
+  background: linear-gradient(100deg, #fff, #ffd9c9 55%, #ffb199);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.brand::before { content: "✦ "; font-size: 13px; color: var(--accent-2); -webkit-text-fill-color: var(--accent-2); }
+.brand .pro {
+  font-size: 11px; vertical-align: super; letter-spacing: 0.08em;
+  background: linear-gradient(100deg, var(--accent-2), var(--accent));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  font-weight: 800;
+}
 nav { display: flex; gap: 4px; flex: 1; }
 nav button {
-  background: none; border: none; color: var(--muted); padding: 8px 14px;
-  cursor: pointer; border-radius: 8px; font-size: 14px;
+  background: transparent; border: 1px solid transparent;
+  color: var(--muted); padding: 8px 15px; cursor: pointer;
+  border-radius: 999px; font-size: 13.5px; font-weight: 500;
+  transition: all var(--motion);
 }
-nav button:hover { color: var(--text); background: var(--panel-2); }
-nav button.active { color: var(--text); background: var(--panel-2); }
+nav button:hover { color: var(--text); background: rgba(255, 255, 255, 0.07); }
+nav button.active {
+  color: var(--text);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.055));
+  border-color: var(--glass-border);
+  box-shadow: inset 0 1px 0 var(--glass-inner), 0 6px 18px rgba(0, 0, 0, 0.3);
+}
 .header-right { display: flex; align-items: center; gap: 12px; }
+
+/* ---------- 输入控件：内凹玻璃 ---------- */
 select, input, textarea {
-  background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
-  border-radius: 8px; padding: 7px 10px; font-size: 13px; outline: none;
+  background: rgba(10, 12, 20, 0.45);
+  color: var(--text); border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px; font-size: 13px; outline: none;
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.35);
+  transition: border-color var(--motion), box-shadow var(--motion);
 }
-input:focus, textarea:focus { border-color: var(--accent); }
+input:focus, textarea:focus, select:focus {
+  border-color: rgba(255, 154, 77, 0.55);
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.35),
+              0 0 0 3px rgba(255, 154, 77, 0.18);
+}
 textarea { width: 100%; resize: vertical; font-family: inherit; }
-main { max-width: 1080px; margin: 20px auto; padding: 0 16px; }
+
+main { max-width: 1080px; margin: 22px auto 40px; padding: 0 16px; }
 .tab { display: none; }
-.tab.active { display: block; }
+.tab.active { display: block; animation: rise var(--motion) both; }
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } }
+
+/* ---------- 卡片：玻璃面板 ---------- */
 .card {
-  background: var(--panel); border: 1px solid var(--line);
-  border-radius: 12px; padding: 16px 18px; margin-bottom: 16px;
+  background: linear-gradient(150deg, var(--glass-strong), var(--glass));
+  backdrop-filter: blur(24px) saturate(165%);
+  -webkit-backdrop-filter: blur(24px) saturate(165%);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+  padding: 18px 20px; margin-bottom: 16px;
+  box-shadow:
+    0 18px 50px rgba(0, 0, 0, 0.38),
+    inset 0 1px 0 var(--glass-inner),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.04);
+  transition: transform var(--motion), box-shadow var(--motion);
 }
-.card h3 { margin: 4px 0 12px; font-size: 15px; }
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 26px 60px rgba(0, 0, 0, 0.46),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.04);
+}
+.card h3 { margin: 4px 0 12px; font-size: 15px; font-weight: 600; letter-spacing: 0.01em; }
+
 .toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
 .toolbar.center { justify-content: center; }
+
+/* ---------- 按钮：玻璃控件（Liquid Glass 主战场） ---------- */
 button.primary, button.ghost, button.danger {
-  border-radius: 8px; padding: 8px 14px; cursor: pointer; font-size: 13px;
-  border: 1px solid var(--line); background: var(--panel-2); color: var(--text);
+  border-radius: 999px; padding: 8px 16px; cursor: pointer;
+  font-size: 13px; font-weight: 600; letter-spacing: 0.01em;
+  border: 1px solid var(--glass-border);
+  color: var(--text);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.05));
+  box-shadow: inset 0 1px 0 var(--glass-inner), 0 8px 22px rgba(0, 0, 0, 0.28);
+  transition: all var(--motion);
 }
-button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-button.primary:hover { filter: brightness(1.1); }
-button.danger { background: transparent; border-color: var(--accent); color: var(--accent); }
+button:hover { transform: translateY(-1px); }
+button:active { transform: translateY(0) scale(0.98); }
+button.primary {
+  border-color: transparent;
+  background: linear-gradient(145deg, var(--accent-2), var(--accent));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    0 10px 26px rgba(255, 106, 94, 0.32);
+}
+button.primary:hover { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 14px 32px rgba(255, 106, 94, 0.42); }
+button.danger { background: rgba(255, 106, 94, 0.1); border-color: rgba(255, 106, 94, 0.45); color: #ffb4ab; }
 button.danger:hover { background: var(--accent); color: #fff; }
-button.ghost:hover { border-color: var(--muted); }
-button:disabled { opacity: .5; cursor: not-allowed; }
+button.ghost:hover { border-color: rgba(255, 255, 255, 0.3); background: rgba(255, 255, 255, 0.08); }
+button:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+
 .muted { color: var(--muted); font-size: 12px; }
 .err { color: var(--err); font-size: 12px; }
-.empty { text-align: center; padding: 24px 0; }
+.empty { text-align: center; padding: 26px 0; }
+
+/* ---------- 统计块 ---------- */
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
-.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 18px; }
-.grid label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
-.grid small { color: var(--muted); }
-.grid small a { color: var(--accent-2); text-decoration: none; }
-.grid small a:hover { text-decoration: underline; }
-.pair input { width: 80px; }
-.row { display: flex; gap: 18px; flex-wrap: wrap; margin: 12px 0; }
-.switch-line { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
-.stat-row { display: flex; gap: 18px; margin: 8px 0 14px; }
-.stat { flex: 1; background: var(--panel-2); border-radius: 10px; padding: 10px 12px; }
-.stat b { font-size: 20px; display: block; }
-.badge { display: inline-block; padding: 2px 10px; border-radius: 99px; font-size: 12px; }
-.badge.ok { background: rgba(74, 222, 128, .15); color: var(--ok); }
-.badge.bad { background: rgba(248, 113, 113, .15); color: var(--err); }
-.badge.unknown { background: rgba(251, 191, 36, .15); color: var(--warn); }
+.stat-row { display: flex; gap: 14px; margin: 10px 0 14px; }
+.stat {
+  flex: 1; border-radius: var(--radius-sm); padding: 12px 14px;
+  background: rgba(10, 12, 20, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.3);
+}
+.stat b {
+  font-size: 22px; display: block; letter-spacing: 0.01em;
+  background: linear-gradient(100deg, #fff, #ffc9a8);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+
+.badge {
+  display: inline-block; padding: 2px 10px; border-radius: 999px;
+  font-size: 12px; border: 1px solid transparent;
+}
+.badge.ok { background: rgba(94, 232, 154, 0.14); color: var(--ok); border-color: rgba(94, 232, 154, 0.3); }
+.badge.bad { background: rgba(255, 123, 114, 0.14); color: var(--err); border-color: rgba(255, 123, 114, 0.3); }
+.badge.unknown { background: rgba(251, 191, 36, 0.14); color: var(--warn); border-color: rgba(251, 191, 36, 0.3); }
+
+/* ---------- 表格：内容层保持可读 ---------- */
 .table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; }
-th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); }
-th { color: var(--muted); font-weight: 500; font-size: 12px; }
-tr:hover td { background: rgba(255, 255, 255, .02); }
-.streak { color: var(--accent-2); font-weight: 600; }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.07); }
+th { color: var(--muted); font-weight: 500; font-size: 12px; letter-spacing: 0.03em; }
+tbody tr { transition: background var(--motion); }
+tr:hover td { background: rgba(255, 255, 255, 0.035); }
+.streak {
+  color: var(--accent-2); font-weight: 700;
+  text-shadow: 0 0 18px rgba(255, 154, 77, 0.45);
+}
+
+/* ---------- 日志：内容层（保持实底可读，不跟风玻璃） ---------- */
 #logBox {
   height: 60vh; overflow-y: auto; white-space: pre-wrap; word-break: break-all;
-  font: 12px/1.7 Consolas, monospace; margin: 0;
+  font: 12px/1.7 "SF Mono", Consolas, monospace; margin: 0;
+  background: var(--panel-solid);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 }
+
+/* ---------- 表单布局 ---------- */
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 18px; }
+.grid label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; }
+.grid small { color: var(--muted); font-size: 11.5px; line-height: 1.5; }
+.grid small a { color: var(--accent-2); text-decoration: none; }
+.grid small a:hover { text-decoration: underline; }
+.pair input { width: 84px; }
+.row { display: flex; gap: 18px; flex-wrap: wrap; margin: 12px 0; }
+.switch-line {
+  display: flex; align-items: center; gap: 7px; font-size: 13px;
+  cursor: pointer; user-select: none;
+}
+.switch-line input { accent-color: var(--accent); }
+
+/* ---------- 模态：玻璃浮层（液态形变入场） ---------- */
 .modal {
-  position: fixed; inset: 0; background: rgba(0, 0, 0, .6);
-  display: flex; align-items: center; justify-content: center; z-index: 100;
+  position: fixed; inset: 0; z-index: 100;
+  background: rgba(5, 6, 10, 0.55);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex; align-items: center; justify-content: center;
 }
 .modal.hidden { display: none; }
 .modal-box {
-  background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
-  padding: 22px 26px; width: 400px; max-width: 92vw;
+  background: linear-gradient(155deg, rgba(40, 44, 60, 0.75), rgba(22, 25, 36, 0.72));
+  backdrop-filter: blur(34px) saturate(180%);
+  -webkit-backdrop-filter: blur(34px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 26px; padding: 24px 28px; width: 410px; max-width: 92vw;
+  box-shadow:
+    0 40px 90px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  animation: pop 0.34s cubic-bezier(0.32, 0.72, 0.24, 1) both;
 }
+@keyframes pop { from { opacity: 0; transform: scale(0.92) translateY(10px); } }
+.modal-box h3 { margin: 0 0 8px; }
 .modal-box input, .modal-box textarea { width: 100%; margin: 8px 0; }
-.full { width: 100%; margin-top: 8px; }
+.full { width: 100%; margin-top: 10px; }
+
 .qr-box {
   display: flex; align-items: center; justify-content: center;
-  min-height: 220px; background: #fff; border-radius: 10px; margin: 10px 0;
+  min-height: 220px; border-radius: var(--radius-sm); margin: 12px 0;
+  background: rgba(250, 250, 252, 0.94);
+  box-shadow: inset 0 2px 12px rgba(0, 0, 0, 0.18);
 }
 .qr-box img { width: 220px; height: 220px; }
+
+/* ---------- Toast ---------- */
 #toast {
-  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
-  background: var(--panel-2); border: 1px solid var(--line); color: var(--text);
-  padding: 10px 18px; border-radius: 10px; opacity: 0; transition: opacity .25s;
-  pointer-events: none; z-index: 200; max-width: 80vw;
+  position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%);
+  background: linear-gradient(150deg, rgba(44, 48, 64, 0.85), rgba(26, 29, 42, 0.82));
+  backdrop-filter: blur(24px) saturate(170%);
+  -webkit-backdrop-filter: blur(24px) saturate(170%);
+  border: 1px solid var(--glass-border); color: var(--text);
+  padding: 11px 20px; border-radius: 16px;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.5), inset 0 1px 0 var(--glass-inner);
+  opacity: 0; transition: opacity 0.25s; pointer-events: none;
+  z-index: 200; max-width: 80vw; white-space: pre-line;
 }
 #toast.show { opacity: 1; }
+
 #guideCard ol { margin: 0; padding-left: 20px; color: var(--muted); }
+#guideCard { border-color: rgba(255, 154, 77, 0.28); }
+
+/* ---------- 键盘焦点（skill 清单硬性要求） ---------- */
+:focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+/* ---------- 回退：减弱透明度 ---------- */
+@media (prefers-reduced-transparency: reduce) {
+  header, .card, .modal-box, #toast {
+    background: var(--panel-solid);
+    backdrop-filter: none; -webkit-backdrop-filter: none;
+  }
+  .ambient i { opacity: 0.25; }
+}
+
+/* ---------- 回退：减弱动态 ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .ambient i { animation: none; }
+}
+
 @media (max-width: 720px) {
   .grid { grid-template-columns: 1fr; }
-  header { flex-wrap: wrap; }
+  header { flex-wrap: wrap; margin: 10px 10px 0; }
+  main { margin-top: 14px; }
 }

@@ -9,8 +9,8 @@ import re
 
 from douyin.models import Friend
 
-# 「火花392天」「火花 392 天」
-SPARK_DAYS_RE = re.compile(r"火花\s*(\d{1,4})\s*天?")
+# 「火花392天」——必须有「天」，避免把「续火花 2026-09-13」这类消息日期当天数
+SPARK_DAYS_RE = re.compile(r"火花\s*(\d{1,4})\s*天")
 # 「392天」
 DAY_RE = re.compile(r"(\d{1,4})\s*天")
 # 裸数字行（Docker 极简页面形态下火花天数独立成行）
@@ -29,10 +29,11 @@ def extract_days(text: str) -> int | None:
     m = DAY_RE.search(text)
     if m and "火花" in text:
         return int(m.group(1))
-    # 「🔥365」「🔥 365」形态：行内有火花图标且带数字
-    if ("火花" in text or "🔥" in text):
-        m = re.search(r"(\d{1,4})", text)
-        if m:
+    # 「🔥365」「🔥 365」形态：火花图标紧邻数字，且数字不是日期的一部分
+    # （我们自动发送的消息预览如「续火花 2026-09-13」会混进行文本，须排除）
+    for m in re.finditer(r"(?:🔥|火花)\s*(\d{1,4})", text):
+        after = text[m.end():m.end() + 2]
+        if not re.match(r"[-/.年月日]", after):
             return int(m.group(1))
     return None
 
