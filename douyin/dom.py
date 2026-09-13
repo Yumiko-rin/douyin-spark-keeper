@@ -152,7 +152,7 @@ async def open_friend(page: Page, name: str, allow_first_message: bool = False,
         await box.click()
         await box.fill("")
         await box.press_sequentially(key, delay=random.randint(25, 60))
-        await page.wait_for_timeout(1200)
+        await page.wait_for_timeout(1800)
     except PWError as e:
         log.warning("搜索输入失败：%s", e)
         return "not_found"
@@ -169,7 +169,19 @@ async def open_friend(page: Page, name: str, allow_first_message: bool = False,
                 except PWError:
                     continue
 
-    # 兜底：直接点会话列表里带该名字的行
+    # JS 兜底：点结果里含目标名字的元素（优先其所在行的「发消息」按钮）——
+    # 实测搜索结果的行结构不匹配通用 class 选择器，但名字文本一定在
+    clicked = None
+    try:
+        clicked = await page.evaluate(_JS_CLICK_SEARCH_RESULT, name)
+    except PWError as e:
+        log.debug("JS 点击搜索结果失败：%s", e)
+    if clicked:
+        log.info("已通过 JS 点击「%s」的搜索结果（%s）", name, clicked)
+        await page.wait_for_timeout(1500)
+        return "ok"
+
+    # 最后兜底：直接点会话列表里带该名字的行
     for sel in CONVERSATION_ROW:
         loc = page.locator(sel).filter(has_text=name)
         if await loc.count():
@@ -182,6 +194,25 @@ async def open_friend(page: Page, name: str, allow_first_message: bool = False,
     log.warning("未找到好友「%s」的会话入口", name)
     return "not_found"
 
+
+_JS_CLICK_SEARCH_RESULT = r"""
+(name) => {
+  // 在搜索结果中点含目标名字的可见元素；同行若有「发消息」按钮则优先点它
+  const nameEls = [...document.querySelectorAll('span,div,p')]
+    .filter(e => e.offsetWidth > 0 && (e.innerText || '').trim() === name);
+  if (nameEls.length) {
+    const row = nameEls[0].closest('[class*="item"], [class*="result"], [class*="contact"], li') || nameEls[0];
+    const btn = [...row.querySelectorAll('button, [class*="button"], [class*="btn"]')]
+      .find(b => (b.innerText || '').includes('发消息'));
+    (btn || nameEls[0]).click();
+    return btn ? 'row-send-btn' : 'name-el';
+  }
+  const btn = [...document.querySelectorAll('button, [class*="button"], [class*="btn"]')]
+    .find(b => (b.innerText || '').includes('发消息') && b.offsetWidth > 0);
+  if (btn) { btn.click(); return 'send-btn'; }
+  return null;
+}
+"""
 
 _JS_HEADER_NAMES = r"""
 () => {

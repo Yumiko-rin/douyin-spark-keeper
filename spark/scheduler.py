@@ -438,7 +438,10 @@ class SparkScheduler:
         note = f"失败:{','.join(failed)}" if failed else ""
         if risk_halt:
             note = f"风控熔断:{risk_halt};{note}"
-        self.store.save_day_summary(account, total=total, ok=len(ok), failed=len(failed),
+        # 演练不计入成功：否则会把今天标记为已发送，挡住真实发送
+        self.store.save_day_summary(account, total=total,
+                                    ok=0 if dry else len(ok),
+                                    failed=0 if dry else len(failed),
                                     dry=dry_count, attempts=attempt, note=note)
         if risk_halt:
             await self._notify(account, cfg,
@@ -511,9 +514,22 @@ class SparkScheduler:
         cfg = self._load_cfg(account)
         _ctx, page = await self.pool.chat_page(account, headless=cfg.headless)
         friends = await dom.sync_friends(page)
+        if not friends:
+            # 页面可能尚未渲染完成：刷新重试一次，仍为空则不动本地数据
+            log.warning("账号 %s 首次同步 0 行，刷新页面重试", account)
+            try:
+                await page.reload(wait_until="domcontentloaded")
+                await page.wait_for_timeout(3000)
+            except Exception as e:
+                log.debug("刷新聊天页失败：%s", e)
+            friends = await dom.sync_friends(page)
         rows = [f.to_row() for f in friends]
         upserted = self.store.upsert_friends(account, rows)
-        removed = self.store.delete_friends_not_seen(account, {f.name for f in friends})
+        # 同步到 0 行时绝不清空本地好友表（页面异常时不毁数据）
+        removed = (self.store.delete_friends_not_seen(account, {f.name for f in friends})
+                   if friends else 0)
+        if not friends:
+            log.warning("账号 %s 同步仍为 0 行，保留本地好友数据不动", account)
         self._set_status(account, last_action="好友同步")
         return {"found": len(friends), "upserted": upserted, "removed": removed}
 

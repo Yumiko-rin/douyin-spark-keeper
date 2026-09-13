@@ -17,7 +17,10 @@ from playwright.async_api import Error as PWError
 
 from douyin.cookies import parse_cookies
 from douyin.selectors import (
+    CHAT_URL,
+    HOME_URL,
     JS_CAPTCHA_DETECT,
+    JS_LOGGED_OUT_PANEL,
     LOGIN_BUTTON,
     LOGIN_PANEL,
     LOGIN_SUCCESS_MARKERS,
@@ -165,18 +168,30 @@ class LoginFlow:
         await self._safe_reset(account)
         ctx = await self.pool.context_for(account, headless=not visible)
         page = ctx.pages[0] if ctx.pages else await ctx.new_page()
-        await page.goto("https://www.douyin.com/", wait_until="domcontentloaded",
-                        timeout=30_000)
+        # 直接进聊天页：未登录时页面自带扫码登录面板，无需找按钮点击
+        await page.goto(CHAT_URL, wait_until="domcontentloaded", timeout=30_000)
+        await page.wait_for_timeout(2500)
 
-        if await self.pool.is_logged_in(ctx):
+        try:
+            panel = await page.evaluate(JS_LOGGED_OUT_PANEL)
+        except PWError:
+            panel = None
+        if not panel:
+            # 会话有效，聊天页正常打开
             return {"logged_in": True, "qr_base64": None, "captcha": None,
                     "visible": visible, "tip": "该账号已登录，无需重新扫码"}
 
-        # 先直接等二维码（部分入口自动弹登录框），再尝试点登录按钮
-        qr = await self._wait_capture(page, timeout_ms=5000)
-        if qr is None:
-            qr = await self._open_login_page(page)
+        # 从聊天页面板直接抓二维码
+        qr = await self._wait_capture(page, timeout_ms=10_000)
         captcha = await self._detect_captcha(page)
+        if qr is None and not captcha:
+            # 面板可能停在「验证码登录」页签：点一下「扫码登录」
+            try:
+                await page.evaluate(self._JS_CLICK_QR_TAB)
+            except PWError:
+                pass
+            qr = await self._wait_capture(page, timeout_ms=8000)
+            captcha = await self._detect_captcha(page)
 
         # 无头模式被滑块验证拦截 → 换可视窗口人工过验证
         if qr is None and captcha and not visible:
@@ -184,11 +199,10 @@ class LoginFlow:
                         account, captcha)
             return {**await self._start(account, visible=True), "captcha": captcha}
 
-        # 无验证码但也没抓到码 → 刷新重试一次
+        # 仍无二维码 → 回退首页点击流程
         if qr is None and not captcha:
-            await page.reload(wait_until="domcontentloaded")
+            await page.goto(HOME_URL, wait_until="domcontentloaded", timeout=30_000)
             qr = await self._open_login_page(page)
-            captcha = await self._detect_captcha(page)
 
         if qr is not None:
             tip = "请用抖音 App 扫一扫（直接扫弹出的浏览器窗口里的码更快）"
@@ -200,6 +214,13 @@ class LoginFlow:
         return {"logged_in": False, "qr_base64": qr, "captcha": captcha,
                 "visible": visible, "tip": tip,
                 "page_base64": await self._page_shot(page)}
+
+    _JS_CLICK_QR_TAB = """() => {
+      const el = [...document.querySelectorAll('span,div,a,button')]
+        .find(e => e.offsetWidth > 0 && (e.innerText || '').trim() === '扫码登录');
+      if (el) { el.click(); return true; }
+      return false;
+    }"""
 
     async def _page_shot(self, page: Page) -> str | None:
         """当前页面实拍（诊断用：控制台直接显示浏览器里看到的画面）。"""

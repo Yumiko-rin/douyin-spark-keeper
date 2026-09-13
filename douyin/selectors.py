@@ -98,6 +98,16 @@ FILE_INPUT = [  # 聊天输入区的图片上传入口
 # 限流/风控信号（出现即熔断，立即停止整轮发送）
 RISK_KEYWORDS = ("操作太频繁", "操作频繁", "安全验证", "请稍后再试", "存在异常", "验证码")
 
+# ---------- JS：登录面板检测（cookie 还在但服务端会话被踢时，聊天页会直接渲染登录面板） ----------
+JS_LOGGED_OUT_PANEL = r"""
+() => {
+  const t = document.body ? document.body.innerText : '';
+  if (t.includes('验证码登录') && t.includes('登录')) return 'panel';
+  if (t.includes('扫码登录') && t.includes('扫一扫')) return 'panel';
+  return null;
+}
+"""
+
 # ---------- JS：滑块/安全验证检测（验证码常在跨域 iframe 里，需多信号） ----------
 # 注意：抖音把验证码 SDK 常驻挂在 DOM 上（不可见），元素/iframe 信号必须要求可见，
 # 否则会把正常页面误判为被拦截。

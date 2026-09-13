@@ -16,7 +16,7 @@ from pathlib import Path
 from playwright.async_api import BrowserContext, Playwright, async_playwright
 
 from douyin.models import NotLoggedIn
-from douyin.selectors import CHAT_URL, LOGIN_COOKIE_KEYS
+from douyin.selectors import CHAT_URL, JS_LOGGED_OUT_PANEL, LOGIN_COOKIE_KEYS
 
 log = logging.getLogger("session")
 
@@ -119,16 +119,32 @@ class BrowserPool:
 
     # ---------- 高层 API ----------
     async def chat_page(self, account: str, headless: bool | None = None):
-        """返回已打开聊天页的 (context, page)。未登录抛 NotLoggedIn。"""
+        """返回已打开聊天页的 (context, page)。未登录抛 NotLoggedIn。
+
+        校验看聊天页真实状态：cookie 还在但服务端会话被踢时，
+        页面会渲染登录面板（含「验证码登录/扫码登录」字样），同样视为未登录。
+        """
         ctx = await self.context_for(account, headless=headless)
-        if not await self.is_logged_in(ctx):
-            raise NotLoggedIn(f"账号 {account} 登录态失效，请在控制台重新扫码")
+        if not await self.has_session(ctx):
+            raise NotLoggedIn(f"账号 {account} 未登录，请在控制台扫码")
         page = await self._ensure_chat_page(ctx)
+        try:
+            panel = await page.evaluate(JS_LOGGED_OUT_PANEL)
+        except Exception:
+            panel = None
+        if panel:
+            raise NotLoggedIn(
+                f"账号 {account} 登录已失效（服务端会话被踢，cookie 未过期）,"
+                "请在控制台重新扫码")
         return ctx, page
 
-    async def is_logged_in(self, ctx: BrowserContext) -> bool:
+    async def has_session(self, ctx: BrowserContext) -> bool:
+        """快速预检：登录 cookie 是否存在（服务端会话是否有效由页面状态判断）。"""
         cookies = {c["name"]: c for c in await ctx.cookies()}
         return any(cookies.get(k, {}).get("value") for k in LOGIN_COOKIE_KEYS)
+
+    async def is_logged_in(self, ctx: BrowserContext) -> bool:
+        return await self.has_session(ctx)
 
     async def _ensure_chat_page(self, ctx: BrowserContext):
         for page in ctx.pages:
