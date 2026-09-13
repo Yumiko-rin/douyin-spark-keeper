@@ -1,0 +1,14 @@
+services:
+  spark:
+    build: .
+    container_name: spark-keeper
+    restart: unless-stopped
+    ports:
+      - "8020:8020"
+    env_file:
+      - .env
+    environment:
+      - HOST=0.0.0.0
+    volumes:
+      - ./data:/app/data
+    # 时区跟随宿主机配置（.env 的 TZ）

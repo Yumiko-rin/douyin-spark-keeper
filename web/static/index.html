@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>火花管家 Pro</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <div class="brand">🔥 火花管家 <span class="pro">Pro</span></div>
+  <nav id="nav">
+    <button data-tab="overview" class="active">总览</button>
+    <button data-tab="friends">好友</button>
+    <button data-tab="schedule">定时</button>
+    <button data-tab="notify">通知</button>
+    <button data-tab="logs">日志</button>
+  </nav>
+  <div class="header-right">
+    <select id="accountSel" title="当前账号"></select>
+    <span id="clockInfo" class="muted"></span>
+  </div>
+</header>
+
+<main>
+  <!-- 总览 -->
+  <section id="tab-overview" class="tab active">
+    <div class="toolbar">
+      <button id="btnAddAccount" class="ghost">＋ 添加账号</button>
+      <button id="btnLogin" class="primary">扫码登录</button>
+      <button id="btnDry">▶ 模拟演练</button>
+      <button id="btnSend" class="danger">⚡ 立即发送</button>
+      <button id="btnSync" class="ghost">⟳ 同步好友</button>
+      <button id="btnCheck" class="ghost">检查登录态</button>
+      <span id="runIndicator" class="muted"></span>
+    </div>
+    <div id="cards" class="cards"></div>
+    <div class="card" id="guideCard">
+      <h3>快速上手</h3>
+      <ol>
+        <li>「扫码登录」→ 抖音 App 扫一扫；</li>
+        <li>「同步好友」→ 到「好友」页勾选要保火花的人；</li>
+        <li>「定时」页设置每天发送时刻（默认 21:00，零抖动准时发）；</li>
+        <li>先「模拟演练」确认流程，再等定时或手动「立即发送」。</li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- 好友 -->
+  <section id="tab-friends" class="tab">
+    <div class="toolbar">
+      <button id="btnSync2" class="primary">⟳ 同步好友</button>
+      <button id="btnSelectAll" class="ghost">全选</button>
+      <button id="btnSelectNone" class="ghost">全不选</button>
+      <button id="btnSelectSpark" class="ghost">只选有火花的</button>
+      <span class="muted">勾选 = 每天自动发送对象</span>
+    </div>
+    <div class="card table-wrap">
+      <table id="friendsTable">
+        <thead><tr>
+          <th><input type="checkbox" id="chkAll"></th>
+          <th>昵称</th><th>火花天数</th><th>专属文案</th><th>操作</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+      <p id="friendsEmpty" class="muted empty">还没有好友数据，请先「同步好友」（需要已扫码登录）。</p>
+    </div>
+  </section>
+
+  <!-- 定时 -->
+  <section id="tab-schedule" class="tab">
+    <div class="card">
+      <h3>每日发送</h3>
+      <div class="grid">
+        <label>发送时刻 <input id="cfg_send_time" placeholder="21:00"><small>每天这个时间准时发出（已按 NTP 校时）</small></label>
+        <label>抖动分钟 <input id="cfg_jitter_minutes" type="number" min="0" max="120"><small>0 = 分秒不差；设 5~15 更像真人</small></label>
+        <label>发送窗口 <span class="pair"><input id="cfg_window_start" placeholder="20:00"> ~ <input id="cfg_window_end" placeholder="23:00"></span><small>填写后优先于左侧时刻：窗口内随机选一天固定的时刻</small></label>
+        <label>保底截止 <input id="cfg_deadline_time" placeholder="23:55"><small>失败后在截止前自动重试</small></label>
+        <label>重试间隔(分) <input id="cfg_retry_interval_minutes" type="number" min="1" max="60"></label>
+        <label>预热分钟 <input id="cfg_prewarm_minutes" type="number" min="0" max="30"><small>提前打开聊天页，到点即发</small></label>
+        <label>单轮上限(人) <input id="cfg_max_friends_per_run" type="number" min="1" max="100"></label>
+        <label>好友间隔(秒) <span class="pair"><input id="cfg_gap_lo" type="number" min="3"> ~ <input id="cfg_gap_hi" type="number" min="3"></span><small>两人之间的随机停顿</small></label>
+        <label>巡检时刻 <input id="cfg_health_check_time" placeholder="10:00"><small>每天检查登录态 + 同步好友</small></label>
+      </div>
+      <h3>文案池（每发一条随机抽一条，支持变量）</h3>
+      <textarea id="cfg_messages" rows="6" placeholder="{friend}，火花别灭呀 🔥"></textarea>
+      <p class="muted">可用变量：{friend} 昵称、{date} 日期、{time} 时间、{weekday} 星期、{streak} 火花天数、{hitokoto} 一言、{festival} 节日祝福；条目以 image: 开头表示发送本地图片（实验性）</p>
+      <h3>节日祝福（可选，MM-DD=祝福语，当天自动填充 {festival}）</h3>
+      <textarea id="cfg_festivals" rows="3" placeholder="01-01=新年快乐！&#10;05-20=今天是个好日子"></textarea>
+      <h3>发送名单白名单（可选，每行一个昵称；非空时无视勾选，供 CI/无界面部署用）</h3>
+      <textarea id="cfg_allowlist" rows="3" placeholder="侯&#10;小明"></textarea>
+      <div class="row">
+        <label class="switch-line"><input id="cfg_enabled" type="checkbox"> 启用定时发送</label>
+        <label class="switch-line"><input id="cfg_allow_first_message" type="checkbox"> 允许发首条消息（对方无会话记录）</label>
+        <label class="switch-line"><input id="cfg_notify_on_success" type="checkbox"> 成功后推送摘要</label>
+        <label class="switch-line"><input id="cfg_notify_on_failure" type="checkbox"> 失败/登录失效必推送</label>
+      </div>
+      <div class="toolbar">
+        <button id="btnSaveCfg" class="primary">保存定时配置</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 通知 -->
+  <section id="tab-notify" class="tab">
+    <div class="card">
+      <h3>推送渠道（任填其一或多选，留空即禁用）</h3>
+      <div class="grid">
+        <label>Server酱 SendKey <input id="nt_serverchan_sendkey" placeholder="SCT..."></label>
+        <label>Bark 地址 <input id="nt_bark_url" placeholder="https://api.day.app/你的Key"></label>
+        <label>Telegram Token <input id="nt_telegram_token"></label>
+        <label>Telegram ChatID <input id="nt_telegram_chat_id"></label>
+        <label>企业微信 Webhook <input id="nt_wecom_webhook"></label>
+        <label>钉钉 Webhook <input id="nt_dingtalk_webhook" placeholder="https://oapi.dingtalk.com/robot/send?access_token=..."></label>
+        <label>钉钉加签密钥 <input id="nt_dingtalk_secret" placeholder="SEC...（未开加签留空）"></label>
+        <label>自定义 Webhook <input id="nt_custom_webhook" placeholder="POST {title,body,level}"></label>
+        <label>代理(给TG用) <input id="nt_proxy" placeholder="http://127.0.0.1:7890"></label>
+      </div>
+      <div class="toolbar">
+        <button id="btnSaveNotify" class="primary">保存</button>
+        <button id="btnTestNotify" class="ghost">发送测试推送</button>
+        <span id="notifyChannels" class="muted"></span>
+      </div>
+      <p class="muted">火花将要熄灭、发送失败、登录态失效时都会推送；别等断了才发现。</p>
+    </div>
+  </section>
+
+  <!-- 日志 -->
+  <section id="tab-logs" class="tab">
+    <div class="toolbar">
+      <label class="switch-line"><input id="autoScroll" type="checkbox" checked> 自动滚动</label>
+      <button id="btnClearLog" class="ghost">清屏</button>
+      <span class="muted">SSE 实时推送，无需刷新</span>
+    </div>
+    <pre id="logBox" class="card"></pre>
+  </section>
+</main>
+
+<!-- 令牌输入 -->
+<div id="tokenGate" class="modal">
+  <div class="modal-box">
+    <h3>访问令牌</h3>
+    <p class="muted">输入 .env 中配置的 AUTH_TOKEN</p>
+    <input id="tokenInput" type="password" placeholder="AUTH_TOKEN">
+    <button id="btnToken" class="primary full">进入控制台</button>
+    <p id="tokenErr" class="err"></p>
+  </div>
+</div>
+
+<!-- 扫码登录 -->
+<div id="loginModal" class="modal hidden">
+  <div class="modal-box">
+    <h3>扫码登录 <span id="loginAccount" class="muted"></span></h3>
+    <div id="qrBox" class="qr-box"><span class="muted">正在获取二维码…</span></div>
+    <p id="loginTip" class="muted">请用抖音 App「扫一扫」</p>
+    <div class="toolbar center">
+      <button id="btnQrRefresh" class="ghost">重新出码</button>
+      <button id="btnLoginClose" class="ghost">关闭</button>
+    </div>
+    <details>
+      <summary class="muted">没有条件扫码？用 Cookie 导入（免扫码）</summary>
+      <textarea id="cookieRaw" rows="4" placeholder="粘贴 Cookie：k1=v1; k2=v2…（F12 → 应用 → Cookies → douyin.com 全选复制；也支持 JSON 数组）"></textarea>
+      <button id="btnImportCookie" class="primary full">导入 Cookie</button>
+    </details>
+  </div>
+</div>
+
+<!-- 专属文案 -->
+<div id="friendModal" class="modal hidden">
+  <div class="modal-box">
+    <h3>专属文案 <span id="friendModalName" class="muted"></span></h3>
+    <textarea id="friendMessages" rows="5" placeholder="留空则使用公共文案池；每行一条"></textarea>
+    <label class="switch-line"><input id="friendEnabled" type="checkbox"> 参与自动发送</label>
+    <div class="toolbar center">
+      <button id="btnFriendSave" class="primary">保存</button>
+      <button id="btnFriendClose" class="ghost">取消</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>

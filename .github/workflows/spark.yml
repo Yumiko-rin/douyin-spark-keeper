@@ -1,0 +1,64 @@
+# GitHub Actions 云端定时续火花（fork 即用，无需自己的服务器）
+#
+# ⚠️ 已知教训（参考 DouYinSparkFlow 等同类项目）：GitHub Runner 的机房 IP 可能被抖音
+# 风控识别并踢下线，可靠性不如自托管。若频繁失败请改用 Docker/服务器部署。
+#
+# 首次配置：
+# 1. 本机用扫码/Cookie 登录后，找到 data/accounts/<账号名>/storage_state.json；
+# 2. 仓库 Settings → Secrets → Actions 新建 SPARK_STORAGE_STATE，粘贴该文件完整内容；
+# 3. 把本账号配置（含 friend_allowlist 名单）存为仓库里的 spark.config.json，
+#    或直接用默认配置（在下方「初始化账号」步骤改成 --config 指定）；
+# 4. 可选：配置 NOTIFY_* Secrets 用于失败提醒（见 .env.example 注释）。
+
+name: spark
+
+on:
+  schedule:
+    - cron: "10 13 * * *" # UTC 13:10 = 北京 21:10（Actions 定时经常迟到几分钟，已留余量）
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "演练模式（只验证登录与好友定位，不真实发送）"
+        type: boolean
+        default: false
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 安装依赖
+        run: |
+          pip install -r requirements.txt
+          playwright install --with-deps chromium
+
+      - name: 初始化账号
+        run: python manage.py init main --config spark.config.json
+
+      - name: 恢复登录态
+        run: |
+          echo "${{ secrets.SPARK_STORAGE_STATE }}" > /tmp/state.json
+          python manage.py cookies main --file /tmp/state.json
+
+      - name: 演练（不真实发送）
+        if: ${{ inputs.dry_run }}
+        run: python manage.py send main --dry
+
+      - name: 正式发送
+        if: ${{ inputs.dry_run != true }}
+        env:
+          NOTIFY_SERVERCHAN_SENDKEY: ${{ secrets.NOTIFY_SERVERCHAN_SENDKEY }}
+          NOTIFY_BARK_URL: ${{ secrets.NOTIFY_BARK_URL }}
+          NOTIFY_TELEGRAM_TOKEN: ${{ secrets.NOTIFY_TELEGRAM_TOKEN }}
+          NOTIFY_TELEGRAM_CHAT_ID: ${{ secrets.NOTIFY_TELEGRAM_CHAT_ID }}
+          NOTIFY_WECOM_WEBHOOK: ${{ secrets.NOTIFY_WECOM_WEBHOOK }}
+          NOTIFY_DINGTALK_WEBHOOK: ${{ secrets.NOTIFY_DINGTALK_WEBHOOK }}
+          NOTIFY_DINGTALK_SECRET: ${{ secrets.NOTIFY_DINGTALK_SECRET }}
+          NOTIFY_CUSTOM_WEBHOOK: ${{ secrets.NOTIFY_CUSTOM_WEBHOOK }}
+        run: python manage.py send main
