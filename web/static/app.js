@@ -33,7 +33,7 @@ async function api(path, opts = {}) {
 function toast(msg, isErr = false) {
   const el = $("#toast");
   el.textContent = msg;
-  el.style.borderColor = isErr ? "var(--err)" : "var(--line)";
+  el.style.borderColor = isErr ? "var(--err)" : "var(--divider)";
   el.classList.add("show");
   clearTimeout(el._t);
   el._t = setTimeout(() => el.classList.remove("show"), 3200);
@@ -66,6 +66,20 @@ $("#nav").addEventListener("click", (e) => {
   if (btn.dataset.tab === "schedule") loadConfig();
   if (btn.dataset.tab === "notify") loadNotify();
   if (btn.dataset.tab === "logs") startLogStream();
+});
+
+/* ---------------- 主题 ---------------- */
+(() => {
+  const saved = localStorage.getItem("spark_theme") || "light";
+  document.body.classList.toggle("dark", saved === "dark");
+  const btn = $("#themeToggle");
+  if (btn) btn.textContent = saved === "dark" ? "🌙" : "☀️";
+})();
+$("#themeToggle")?.addEventListener("click", () => {
+  const dark = !document.body.classList.contains("dark");
+  document.body.classList.toggle("dark", dark);
+  localStorage.setItem("spark_theme", dark ? "dark" : "light");
+  $("#themeToggle").textContent = dark ? "🌙" : "☀️";
 });
 
 /* ---------------- 令牌 ---------------- */
