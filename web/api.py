@@ -118,10 +118,8 @@ def build_router(ctx: AppContext) -> APIRouter:
     async def login_start(name: str, body: dict | None = None,
                           _: None = Depends(guard)):
         account_dir(name)
-        cfg = ctx.sched._load_cfg(name)
+        # headless 未显式指定时由登录流程自动决定（默认可视窗口，服务器无显示时退回无头）
         headless = (body or {}).get("headless")
-        if headless is None:
-            headless = cfg.headless if cfg.headless is not None else ctx.gcfg.headless
         return await ctx.sched.login.start(name, headless=headless)
 
     @router.get("/accounts/{name}/login/wait")

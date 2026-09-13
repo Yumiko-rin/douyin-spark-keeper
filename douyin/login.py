@@ -17,11 +17,11 @@ from playwright.async_api import Error as PWError
 
 from douyin.cookies import parse_cookies
 from douyin.selectors import (
+    JS_CAPTCHA_DETECT,
     LOGIN_BUTTON,
     LOGIN_PANEL,
     LOGIN_SUCCESS_MARKERS,
     QR_CANVAS,
-    QR_IMAGE,
     QR_REFRESH,
 )
 from douyin.session import BrowserPool
@@ -49,16 +49,39 @@ class LoginFlow:
         return None
 
     async def capture_qr(self, page: Page) -> str | None:
-        """返回二维码 PNG 的 base64；抓不到返回 None。"""
-        for selector_list in (QR_IMAGE, QR_CANVAS):
-            loc = await self._first_locator(page, selector_list, timeout_ms=1500)
-            if loc is None:
-                continue
-            try:
-                png = await loc.screenshot(timeout=5000)
+        """返回二维码 PNG 的 base64；抓不到返回 None。
+
+        页面上可能同时有多张 data:image 图片（小图标 + 二维码），
+        取面积最大的那张，并过滤掉小于 120px 的图标。
+        """
+        try:
+            imgs = page.locator('img[src^="data:image"]')
+            n = min(await imgs.count(), 10)
+            best, best_area = None, 0.0
+            for i in range(n):
+                loc = imgs.nth(i)
+                try:
+                    if not await loc.is_visible():
+                        continue
+                    box = await loc.bounding_box()
+                    if box and box["width"] * box["height"] > best_area:
+                        best, best_area = loc, box["width"] * box["height"]
+                except PWError:
+                    continue
+            if best is not None and best_area >= 120 * 120:
+                png = await best.screenshot(timeout=5000)
                 return base64.b64encode(png).decode()
-            except PWError as e:
-                log.debug("二维码截图失败（%s）：%s", selector_list[0], e)
+        except PWError as e:
+            log.debug("data:image 二维码截图失败：%s", e)
+        # canvas 形态兜底
+        for sel in QR_CANVAS:
+            try:
+                loc = page.locator(sel).first
+                if await loc.count() and await loc.is_visible():
+                    png = await loc.screenshot(timeout=5000)
+                    return base64.b64encode(png).decode()
+            except PWError:
+                continue
         # 整个登录面板兜底（包含二维码和说明文字，用户仍可扫）
         panel = await self._first_locator(page, LOGIN_PANEL, timeout_ms=1500)
         if panel is not None:
@@ -79,43 +102,75 @@ class LoginFlow:
             await page.wait_for_timeout(200)
         return None
 
-    _JS_CAPTCHA = """() => {
-        const t = document.body ? document.body.innerText : '';
-        return t.includes('请完成下列验证') || t.includes('拖动') ||
-               (t.includes('安全验证') && t.includes('继续'));
+    _JS_CAPTCHA = None  # 已迁移至 selectors.JS_CAPTCHA_DETECT（多信号：文本/元素/iframe）
+
+    async def _detect_captcha(self, page: Page) -> str | None:
+        """检测滑块/安全验证，返回命中信号（无则 None）。"""
+        try:
+            return await page.evaluate(JS_CAPTCHA_DETECT)
+        except PWError:
+            return None
+
+    _JS_CLICK_LOGIN = """() => {
+      const els = [...document.querySelectorAll('button,div,span,a')]
+        .filter(e => (e.innerText || '').trim() === '登录' && e.offsetWidth > 0);
+      if (!els.length) return null;
+      els.sort((a, b) => b.getBoundingClientRect().x - a.getBoundingClientRect().x);
+      els[0].click();
+      return els[0].tagName + '.' + (els[0].className || '').toString().slice(0, 40);
     }"""
 
-    async def _detect_captcha(self, page: Page) -> bool:
-        """检测是否被抖音滑块/安全验证拦截。"""
-        try:
-            return bool(await page.evaluate(self._JS_CAPTCHA))
-        except PWError:
-            return False
-
     async def _open_login_page(self, page: Page) -> str | None:
-        """打开首页并点出登录框，返回二维码（有则）。"""
-        btn = await self._first_locator(page, LOGIN_BUTTON, timeout_ms=4000)
-        if btn is not None:
-            try:
-                await btn.click(timeout=3000)
-            except PWError:
-                pass
+        """打开首页并点出登录框，返回二维码（有则）。
+
+        用 JS 点「最右侧的可见『登录』元素」（实测即右上角按钮）：
+        文本定位比 CSS 选择器更抗改版，也避开同选择器下第一个匹配不可见的问题。
+        """
+        try:
+            clicked = await page.evaluate(self._JS_CLICK_LOGIN)
+            if clicked:
+                log.info("已点击登录入口：%s", clicked)
+            else:
+                btn = await self._first_locator(page, LOGIN_BUTTON, timeout_ms=2000)
+                if btn is not None:
+                    await btn.click(timeout=3000)
+        except PWError as e:
+            log.debug("点击登录入口失败：%s", e)
         return await self._wait_capture(page, timeout_ms=8000)
 
-    async def start(self, account: str, headless: bool = True) -> dict:
-        """打开登录页并抓取二维码。返回 {qr_base64, captcha, tip}。
+    async def start(self, account: str, headless: bool | None = None) -> dict:
+        """抓取登录二维码。
 
-        遇到滑块验证且当前是无头模式时，自动改开可视浏览器窗口，
-        让用户直接拖滑块、扫窗口里的码（比截图传网页更快更稳）。
+        headless=None（默认）时优先开**可视浏览器窗口**：登录时人工在场，
+        滑块验证直接拖、二维码直接扫窗口里的码，都最快最稳；
+        无显示环境（Linux 服务器/Docker）启动失败时自动退回无头模式。
         """
-        ctx = await self.pool.context_for(account, headless=headless)
+        if headless is None:
+            try:
+                return await self._start(account, visible=True)
+            except Exception as e:
+                log.warning("账号 %s 可视窗口登录失败，退回无头模式：%s", account, e)
+                await self._safe_reset(account)
+                return await self._start(account, visible=False)
+        return await self._start(account, visible=not headless)
+
+    async def _safe_reset(self, account: str) -> None:
+        try:
+            await self.pool.close(account)
+        except Exception:
+            pass
+
+    async def _start(self, account: str, visible: bool) -> dict:
+        # 先按目标模式重建上下文，避免模式不匹配复用旧会话
+        await self._safe_reset(account)
+        ctx = await self.pool.context_for(account, headless=not visible)
         page = ctx.pages[0] if ctx.pages else await ctx.new_page()
         await page.goto("https://www.douyin.com/", wait_until="domcontentloaded",
                         timeout=30_000)
 
         if await self.pool.is_logged_in(ctx):
-            return {"logged_in": True, "qr_base64": None, "captcha": False,
-                    "tip": "该账号已登录，无需重新扫码"}
+            return {"logged_in": True, "qr_base64": None, "captcha": None,
+                    "visible": visible, "tip": "该账号已登录，无需重新扫码"}
 
         # 先直接等二维码（部分入口自动弹登录框），再尝试点登录按钮
         qr = await self._wait_capture(page, timeout_ms=5000)
@@ -123,34 +178,37 @@ class LoginFlow:
             qr = await self._open_login_page(page)
         captcha = await self._detect_captcha(page)
 
-        # 滑块验证挡路 → 换可视窗口人工过验证
-        if qr is None and captcha and headless:
-            log.warning("账号 %s 登录页出现滑块验证，切换为可视浏览器窗口", account)
-            try:
-                await self.pool.close(account)
-                ctx = await self.pool.context_for(account, headless=False)
-                page = ctx.pages[0] if ctx.pages else await ctx.new_page()
-                await page.goto("https://www.douyin.com/",
-                                wait_until="domcontentloaded", timeout=30_000)
-                headless = False
-                qr = await self._open_login_page(page)
-                captcha = await self._detect_captcha(page)
-            except Exception as e:
-                log.warning("可视窗口启动失败（服务器无显示环境？）：%s", e)
+        # 无头模式被滑块验证拦截 → 换可视窗口人工过验证
+        if qr is None and captcha and not visible:
+            log.warning("账号 %s 登录页出现滑块验证（%s），切换为可视浏览器窗口",
+                        account, captcha)
+            return {**await self._start(account, visible=True), "captcha": captcha}
 
-        # 仍无二维码且没被验证码拦截 → 刷新重试一次
+        # 无验证码但也没抓到码 → 刷新重试一次
         if qr is None and not captcha:
             await page.reload(wait_until="domcontentloaded")
             qr = await self._open_login_page(page)
+            captcha = await self._detect_captcha(page)
 
         if qr is not None:
-            tip = "请用抖音 App 扫一扫（若弹出了浏览器窗口，直接扫窗口里的码更快）"
+            tip = "请用抖音 App 扫一扫（直接扫弹出的浏览器窗口里的码更快）"
         elif captcha:
-            tip = ("抖音弹出了滑块/安全验证：请在弹出的浏览器窗口里完成验证，"
-                   "然后点「重新出码」")
+            tip = ("抖音弹出了滑块/安全验证：请在弹出的浏览器窗口里拖动滑块完成验证，"
+                   "页面进入登录页后点「重新出码」")
         else:
             tip = "二维码抓取失败，可在控制台重试；若反复失败请改用 Cookie 导入"
-        return {"logged_in": False, "qr_base64": qr, "captcha": captcha, "tip": tip}
+        return {"logged_in": False, "qr_base64": qr, "captcha": captcha,
+                "visible": visible, "tip": tip,
+                "page_base64": await self._page_shot(page)}
+
+    async def _page_shot(self, page: Page) -> str | None:
+        """当前页面实拍（诊断用：控制台直接显示浏览器里看到的画面）。"""
+        try:
+            png = await page.screenshot(timeout=8000)
+            return base64.b64encode(png).decode()
+        except PWError as e:
+            log.debug("页面截图失败：%s", e)
+            return None
 
     async def wait_login(self, account: str, timeout_s: int = 180,
                          poll_s: float = 2.0) -> dict:

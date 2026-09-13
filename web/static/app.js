@@ -186,8 +186,13 @@ async function openLoginModal() {
     if (r.qr_base64) {
       $("#qrBox").innerHTML = `<img src="data:image/png;base64,${r.qr_base64}" alt="二维码">`;
       pollLogin();
+    } else if (r.page_base64) {
+      // 抓不到码时展示浏览器里的真实画面（可能是滑块验证/登录框形态变化）
+      $("#qrBox").innerHTML = `<img src="data:image/png;base64,${r.page_base64}" style="max-width:100%;max-height:260px;object-fit:contain" alt="页面截图">`;
+      $("#loginTip").textContent = r.tip;
     } else {
       $("#qrBox").innerHTML = '<span class="muted">二维码获取失败，请重试</span>';
+      $("#loginTip").textContent = r.tip || "";
     }
   });
 }

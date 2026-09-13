@@ -98,7 +98,26 @@ FILE_INPUT = [  # 聊天输入区的图片上传入口
 # 限流/风控信号（出现即熔断，立即停止整轮发送）
 RISK_KEYWORDS = ("操作太频繁", "操作频繁", "安全验证", "请稍后再试", "存在异常", "验证码")
 
-# ---------- JS：页面内批量采集会话行（比逐个 locator 快一个数量级） ----------
+# ---------- JS：滑块/安全验证检测（验证码常在跨域 iframe 里，需多信号） ----------
+JS_CAPTCHA_DETECT = r"""
+() => {
+  const hit = (t) => t.includes('请完成下列验证') ||
+    (t.includes('拖动') && (t.includes('滑块') || t.includes('拼图') || t.includes('按住')));
+  const main = document.body ? document.body.innerText : '';
+  if (hit(main)) return 'text';
+  if (document.querySelector('[class*="captcha" i], [id*="captcha" i]')) return 'element';
+  for (const f of document.querySelectorAll('iframe')) {
+    if (/captcha|verify|sfec/i.test(f.src || '')) return 'iframe-src';
+    try {
+      const d = f.contentDocument;
+      if (d && d.body && hit(d.body.innerText)) return 'iframe-text';
+    } catch (e) { /* cross-origin */ }
+  }
+  return null;
+}
+"""
+
+# JS：页面内批量采集会话行（比逐个 locator 快一个数量级） ----------
 JS_COLLECT_ROWS = r"""
 () => {
   const seen = new Set();
