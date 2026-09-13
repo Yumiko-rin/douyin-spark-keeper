@@ -244,9 +244,10 @@ $("#btnSend").addEventListener("click", () => {
 });
 async function runSend(dry) {
   if (!currentAccount) return toast("请先添加账号", true);
+  const force = $("#forceSend")?.checked || false;
   await busy(dry ? "模拟演练" : "发送中", async () => {
     const r = await api(`/accounts/${enc(currentAccount)}/run/send`, {
-      method: "POST", body: { dry, force: false },
+      method: "POST", body: { dry, force },
     });
     const lines = Object.entries(r.details || {})
       .map(([n, d]) => `${d.ok ? "✓" : "✗"} ${n}：${d.detail}（${d.verified_by}）`);
