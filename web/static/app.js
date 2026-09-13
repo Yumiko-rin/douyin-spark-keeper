@@ -69,6 +69,16 @@ $("#nav").addEventListener("click", (e) => {
 });
 
 /* ---------------- 令牌 ---------------- */
+/* 支持 /?token=xxx 直达：双击启动脚本自动带令牌打开，无需手动输入 */
+(() => {
+  const urlToken = new URLSearchParams(location.search).get("token");
+  if (urlToken) {
+    TOKEN = urlToken.trim();
+    localStorage.setItem("spark_token", TOKEN);
+    history.replaceState(null, "", location.pathname); // 把令牌从地址栏清掉
+  }
+})();
+
 $("#btnToken").addEventListener("click", async () => {
   TOKEN = $("#tokenInput").value.trim();
   try {

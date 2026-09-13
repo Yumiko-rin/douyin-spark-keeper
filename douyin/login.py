@@ -69,44 +69,88 @@ class LoginFlow:
                 pass
         return None
 
-    async def start(self, account: str, headless: bool = True) -> dict:
-        """打开登录页并抓取二维码。返回 {qr_base64, qr_ok, tip}。"""
-        ctx = await self.pool.context_for(account, headless=headless)
-        page = ctx.pages[0] if ctx.pages else await ctx.new_page()
-        await page.goto("https://www.douyin.com/", wait_until="domcontentloaded",
-                        timeout=30_000)
-        await page.wait_for_timeout(1500)
+    async def _wait_capture(self, page: Page, timeout_ms: int = 8000) -> str | None:
+        """快速轮询等二维码出现，一出现立刻截图（不再固定睡大觉）。"""
+        deadline = asyncio.get_event_loop().time() + timeout_ms / 1000
+        while asyncio.get_event_loop().time() < deadline:
+            qr = await self.capture_qr(page)
+            if qr is not None:
+                return qr
+            await page.wait_for_timeout(200)
+        return None
 
-        if await self.pool.is_logged_in(ctx):
-            return {"logged_in": True, "qr_base64": None,
-                    "tip": "该账号已登录，无需重新扫码"}
+    _JS_CAPTCHA = """() => {
+        const t = document.body ? document.body.innerText : '';
+        return t.includes('请完成下列验证') || t.includes('拖动') ||
+               (t.includes('安全验证') && t.includes('继续'));
+    }"""
 
-        # 尝试点出登录面板；部分入口直接就是面板
-        btn = await self._first_locator(page, LOGIN_BUTTON, timeout_ms=5000)
+    async def _detect_captcha(self, page: Page) -> bool:
+        """检测是否被抖音滑块/安全验证拦截。"""
+        try:
+            return bool(await page.evaluate(self._JS_CAPTCHA))
+        except PWError:
+            return False
+
+    async def _open_login_page(self, page: Page) -> str | None:
+        """打开首页并点出登录框，返回二维码（有则）。"""
+        btn = await self._first_locator(page, LOGIN_BUTTON, timeout_ms=4000)
         if btn is not None:
             try:
                 await btn.click(timeout=3000)
             except PWError:
                 pass
-        await page.wait_for_timeout(1500)
-        qr = await self.capture_qr(page)
+        return await self._wait_capture(page, timeout_ms=8000)
+
+    async def start(self, account: str, headless: bool = True) -> dict:
+        """打开登录页并抓取二维码。返回 {qr_base64, captcha, tip}。
+
+        遇到滑块验证且当前是无头模式时，自动改开可视浏览器窗口，
+        让用户直接拖滑块、扫窗口里的码（比截图传网页更快更稳）。
+        """
+        ctx = await self.pool.context_for(account, headless=headless)
+        page = ctx.pages[0] if ctx.pages else await ctx.new_page()
+        await page.goto("https://www.douyin.com/", wait_until="domcontentloaded",
+                        timeout=30_000)
+
+        if await self.pool.is_logged_in(ctx):
+            return {"logged_in": True, "qr_base64": None, "captcha": False,
+                    "tip": "该账号已登录，无需重新扫码"}
+
+        # 先直接等二维码（部分入口自动弹登录框），再尝试点登录按钮
+        qr = await self._wait_capture(page, timeout_ms=5000)
         if qr is None:
-            # 刷新一次页面重试
+            qr = await self._open_login_page(page)
+        captcha = await self._detect_captcha(page)
+
+        # 滑块验证挡路 → 换可视窗口人工过验证
+        if qr is None and captcha and headless:
+            log.warning("账号 %s 登录页出现滑块验证，切换为可视浏览器窗口", account)
+            try:
+                await self.pool.close(account)
+                ctx = await self.pool.context_for(account, headless=False)
+                page = ctx.pages[0] if ctx.pages else await ctx.new_page()
+                await page.goto("https://www.douyin.com/",
+                                wait_until="domcontentloaded", timeout=30_000)
+                headless = False
+                qr = await self._open_login_page(page)
+                captcha = await self._detect_captcha(page)
+            except Exception as e:
+                log.warning("可视窗口启动失败（服务器无显示环境？）：%s", e)
+
+        # 仍无二维码且没被验证码拦截 → 刷新重试一次
+        if qr is None and not captcha:
             await page.reload(wait_until="domcontentloaded")
-            await page.wait_for_timeout(2000)
-            btn = await self._first_locator(page, LOGIN_BUTTON, timeout_ms=5000)
-            if btn is not None:
-                try:
-                    await btn.click(timeout=3000)
-                except PWError:
-                    pass
-            await page.wait_for_timeout(1500)
-            qr = await self.capture_qr(page)
-        return {
-            "logged_in": False,
-            "qr_base64": qr,
-            "tip": "请用抖音 App 扫一扫" if qr else "二维码抓取失败，可在控制台重试",
-        }
+            qr = await self._open_login_page(page)
+
+        if qr is not None:
+            tip = "请用抖音 App 扫一扫（若弹出了浏览器窗口，直接扫窗口里的码更快）"
+        elif captcha:
+            tip = ("抖音弹出了滑块/安全验证：请在弹出的浏览器窗口里完成验证，"
+                   "然后点「重新出码」")
+        else:
+            tip = "二维码抓取失败，可在控制台重试；若反复失败请改用 Cookie 导入"
+        return {"logged_in": False, "qr_base64": qr, "captcha": captcha, "tip": tip}
 
     async def wait_login(self, account: str, timeout_s: int = 180,
                          poll_s: float = 2.0) -> dict:
@@ -122,6 +166,11 @@ class LoginFlow:
                 await page.wait_for_timeout(2000)
                 log.info("账号 %s 扫码登录成功", account)
                 return {"logged_in": True, "tip": "登录成功"}
+            # 被滑块/安全验证拦截时不傻等：提示用户先完成验证
+            if await self._detect_captcha(page):
+                log.warning("账号 %s 等待扫码期间出现滑块验证", account)
+                return {"logged_in": False,
+                        "tip": "页面出现滑块/安全验证：请在浏览器窗口完成验证后，点「重新出码」"}
             # 二维码过期处理：面板还在但 img 消失/出现刷新按钮
             if refreshed < QR_MAX_REFRESH:
                 refresh = await self._first_locator(page, QR_REFRESH, timeout_ms=800)
