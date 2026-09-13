@@ -122,9 +122,13 @@ WantedBy=multi-user.target
 ## Docker
 
 ```bash
-cp .env.example .env   # HOST=0.0.0.0
-docker compose up -d
+cp .env.example .env   # HOST 会被 compose 覆盖为 0.0.0.0，AUTH_TOKEN 必须设置
+docker compose up -d --build
 ```
+
+国内网络注意（已内置应对）：
+- 基础镜像拉取失败时先走镜像源：`docker pull docker.m.daocloud.io/library/python:3.12-slim && docker tag docker.m.daocloud.io/library/python:3.12-slim python:3.12-slim`
+- Dockerfile 已自动把 apt 源切到清华 TUNA，浏览器只装 headless shell（依赖少、更稳）
 
 ## GitHub Actions（fork 即用，无需服务器）
 
