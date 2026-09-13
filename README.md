@@ -51,20 +51,23 @@
 
 ## 快速开始（Windows）
 
-```bash
-# 1. 安装（建议 Python 3.11+）
-python -m venv .venv
+```bat
+:: 1. 安装（需 Python 3.11+；py 是 Windows 官方启动器，比 python 命令更稳，
+::    能避开商店占位符/多版本环境指向错误解释器的坑）
+py -m venv .venv
 .venv\Scripts\pip install -r requirements.txt
 .venv\Scripts\playwright install chromium
 
-# 2. 配置
-copy .env.example .env       # 必改 AUTH_TOKEN
+:: 2. 配置（编辑 .env，把 AUTH_TOKEN 改成你自己的随机字符串）
+copy .env.example .env
+
+:: 3. 启动（chcp 65001 防止 cmd 里中文日志乱码，可选）
+chcp 65001
 .venv\Scripts\python app.py
 
-# 3. 打开控制台
-# 浏览器访问 http://127.0.0.1:8020 → 输入 AUTH_TOKEN
-# 「扫码登录」→ 抖音 App 扫一扫 → 「同步好友」→「好友」页勾选 → 「定时」页设置时间
-# 先「模拟演练」，再等定时或手动「立即发送」
+:: 4. 打开控制台：浏览器访问 http://127.0.0.1:8020 → 输入 AUTH_TOKEN
+::    「扫码登录」→ 抖音 App 扫一扫 → 「同步好友」→「好友」页勾选
+::    → 「定时」页设置时间 → 先「模拟演练」，再等定时或手动「立即发送」
 ```
 
 ## Linux / 服务器
