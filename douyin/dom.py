@@ -130,19 +130,16 @@ async def open_friend(page: Page, name: str, allow_first_message: bool = False,
     返回："ok" 已打开；"no_conversation" 会话列表无此人且未允许发首条；"not_found" 找不到。
     """
     key = (search_key or name).strip()
-    # 会话列表里是否已有该好友（有 = 至少聊过一次）
-    if not allow_first_message:
-        has_conversation = False
-        for sel in CONVERSATION_ROW:
-            try:
-                if await page.locator(sel).filter(has_text=name).count():
-                    has_conversation = True
-                    break
-            except PWError:
-                continue
-        if not has_conversation:
-            log.info("「%s」无会话记录且未开启 allow_first_message，跳过", name)
-            return "no_conversation"
+    # 会话列表是否渲染过该好友：仅作为参考信号。列表可能尚未渲染完成，
+    # 所以不在这里直接跳过——真正找不到人时由搜索结果决定。
+    has_conversation = False
+    for sel in CONVERSATION_ROW:
+        try:
+            if await page.locator(sel).filter(has_text=name).count():
+                has_conversation = True
+                break
+        except PWError:
+            continue
 
     box = await _first_of(page, SEARCH_BOX, timeout_ms=8000)
     if box is None:
@@ -157,7 +154,18 @@ async def open_friend(page: Page, name: str, allow_first_message: bool = False,
         log.warning("搜索输入失败：%s", e)
         return "not_found"
 
-    # 优先精确匹配搜索结果（备注或昵称都可能出现在结果文本里）
+    # 1)「发消息」按钮：Playwright 真实点击（合成 element.click() 对该按钮无效，实测）
+    try:
+        btn = page.get_by_text("发消息", exact=True).first
+        await btn.wait_for(state="visible", timeout=3500)
+        await btn.click(timeout=4000)
+        await page.wait_for_timeout(1500)
+        log.info("已点击「%s」的「发消息」按钮", name)
+        return "ok"
+    except PWError:
+        pass
+
+    # 2) 选择器候选（备注或昵称都可能出现在结果文本里）
     for sel in SEARCH_RESULT:
         for text_key in dict.fromkeys((key, name)):
             loc = page.locator(sel).filter(has_text=text_key)
@@ -169,7 +177,7 @@ async def open_friend(page: Page, name: str, allow_first_message: bool = False,
                 except PWError:
                     continue
 
-    # JS 兜底：点结果里含目标名字的元素（优先其所在行的「发消息」按钮）——
+    # JS 兜底：点结果里的「发消息」按钮或含目标名字的元素——
     # 实测搜索结果的行结构不匹配通用 class 选择器，但名字文本一定在
     clicked = None
     try:
@@ -180,6 +188,11 @@ async def open_friend(page: Page, name: str, allow_first_message: bool = False,
         log.info("已通过 JS 点击「%s」的搜索结果（%s）", name, clicked)
         await page.wait_for_timeout(1500)
         return "ok"
+
+    # 搜索也没找到：会话列表里也没有此人 → 按首条消息配置决定是否跳过
+    if not has_conversation and not allow_first_message:
+        log.info("「%s」搜索与会话列表均未找到，且未开启 allow_first_message，跳过", name)
+        return "no_conversation"
 
     # 最后兜底：直接点会话列表里带该名字的行
     for sel in CONVERSATION_ROW:
@@ -197,19 +210,15 @@ async def open_friend(page: Page, name: str, allow_first_message: bool = False,
 
 _JS_CLICK_SEARCH_RESULT = r"""
 (name) => {
-  // 在搜索结果中点含目标名字的可见元素；同行若有「发消息」按钮则优先点它
+  // 1) 优先点「发消息」按钮：搜索结果区域可见的发送入口
+  const btns = [...document.querySelectorAll('button, [class*="button"], [class*="btn"], span, div')]
+    .filter(e => e.offsetWidth > 0 && (e.innerText || '').trim() === '发消息');
+  if (btns.length) { btns[0].click(); return 'send-btn'; }
+  // 2) 点包含名字的短文本元素（名字可能和火花徽标在同一节点内，须用包含匹配）
   const nameEls = [...document.querySelectorAll('span,div,p')]
-    .filter(e => e.offsetWidth > 0 && (e.innerText || '').trim() === name);
-  if (nameEls.length) {
-    const row = nameEls[0].closest('[class*="item"], [class*="result"], [class*="contact"], li') || nameEls[0];
-    const btn = [...row.querySelectorAll('button, [class*="button"], [class*="btn"]')]
-      .find(b => (b.innerText || '').includes('发消息'));
-    (btn || nameEls[0]).click();
-    return btn ? 'row-send-btn' : 'name-el';
-  }
-  const btn = [...document.querySelectorAll('button, [class*="button"], [class*="btn"]')]
-    .find(b => (b.innerText || '').includes('发消息') && b.offsetWidth > 0);
-  if (btn) { btn.click(); return 'send-btn'; }
+    .filter(e => e.offsetWidth > 0 && (e.innerText || '').includes(name)
+                 && (e.innerText || '').length <= name.length + 6);
+  if (nameEls.length) { nameEls[0].click(); return 'name-el'; }
   return null;
 }
 """
