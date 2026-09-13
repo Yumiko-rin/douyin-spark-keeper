@@ -76,7 +76,8 @@ def _plausible_name(text: str) -> str | None:
 def parse_row(row: dict) -> Friend | None:
     """把 JS 采集的行 {text, aria, title} 解析成 Friend。
 
-    必须同时有「昵称」才返回；火花天数缺失时为 0（仍会列出，由用户勾选）。
+    有可提取的昵称就收录（火花天数缺失记 0）——会话列表本身就是真实会话，
+    是否发送由用户勾选决定；这里只负责「宁全勿漏」地列出并尽力识别火花天数。
     """
     text = (row.get("text") or "").strip()
     aria = (row.get("aria") or "").strip()
@@ -85,6 +86,9 @@ def parse_row(row: dict) -> Friend | None:
         return None
 
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    # 行首是系统/官方/分享等前缀 → 整行是系统通知/公告，不是好友会话
+    if lines and lines[0].startswith(_NON_NAME_PREFIX):
+        return None
     candidates = [aria, title] + lines
 
     days: int | None = None
@@ -100,10 +104,6 @@ def parse_row(row: dict) -> Friend | None:
                 if BARE_NUM_RE.match(line):
                     days = int(line)
                     break
-
-    if days is None and not any("火花" in c or "🔥" in c for c in candidates):
-        # 完全没有火花信号：可能是系统消息/公告，丢弃
-        return None
 
     name = extract_name(aria or title, lines)
     if not name:

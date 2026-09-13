@@ -113,6 +113,10 @@ async def sync_friends(page: Page) -> list[Friend]:
         f = parse_row(row)
         if f and (f.name not in friends or f.streak_days > friends[f.name].streak_days):
             friends[f.name] = f
+    if not friends and rows:
+        # 解析颗粒无收：记录原始行样本，便于定位页面结构变化
+        sample = [r.get("text", "")[:60].replace("\n", "⏎") for r in rows[:3]]
+        log.warning("会话解析 %d 行得到 0 名好友，原始行样本：%s", len(rows), sample)
     log.info("会话解析完成：%d 行 -> %d 名好友", len(rows), len(friends))
     return sorted(friends.values(), key=lambda x: -x.streak_days)
 

@@ -248,6 +248,10 @@ class LoginFlow:
         logged = await self.pool.is_logged_in(ctx)
         nickname = None
         if logged:
+            # 登录成功但备份缺失时补一份 storage_state（供 Actions/换机迁移）
+            backup = self.pool.accounts_dir / account / "storage_state.json"
+            if not backup.is_file():
+                await self._backup_state(ctx, account)
             page = ctx.pages[0] if ctx.pages else await ctx.new_page()
             if "douyin.com" not in page.url:
                 try:

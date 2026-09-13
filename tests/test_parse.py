@@ -39,9 +39,12 @@ def test_parse_row_rejects_noise():
     assert parse_row({"text": "分享给好友", "aria": "", "title": ""}) is None
 
 
-def test_parse_row_no_spark_signal_dropped():
-    """完全无火花信号的行直接丢弃，不给无关会话发消息。"""
-    assert parse_row({"text": "路人甲\n你好", "aria": "", "title": ""}) is None
+def test_parse_row_without_spark_still_listed():
+    """无火花信号的普通会话也收录（天数记 0），是否发送由用户勾选决定。"""
+    f = parse_row({"text": "路人甲\n你好呀", "aria": "", "title": ""})
+    assert f is not None
+    assert f.name == "路人甲"
+    assert f.streak_days == 0
 
 
 def test_extract_name_from_aria_only():
