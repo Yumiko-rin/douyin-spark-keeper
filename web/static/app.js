@@ -485,4 +485,5 @@ async function boot() {
   } catch (e) { /* boot 前已处理 401 */ }
 }
 
-if (TOKEN) boot(); else showTokenGate();
+/* 启动：先直接尝试——本机免令牌模式直接进入；需要令牌时 401 会自动弹出输入框 */
+boot();

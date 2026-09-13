@@ -31,14 +31,22 @@ class AppContext:
     sched: SparkScheduler
 
 
+_LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
+
+
+def auth_passes(auth_token: str, host: str, token: str | None) -> bool:
+    """鉴权判定：设置了令牌则必须匹配；未设置令牌时仅本机监听允许匿名访问。"""
+    if auth_token:
+        return bool(token) and hmac.compare_digest(token, auth_token)
+    return host in _LOOPBACK_HOSTS
+
+
 def build_router(ctx: AppContext) -> APIRouter:
     router = APIRouter(prefix="/api")
 
     def guard(token: str | None = Header(default=None, alias="X-Auth-Token")) -> None:
-        if not ctx.gcfg.auth_token:
-            raise HTTPException(500, "服务端未设置 AUTH_TOKEN，请先配置 .env")
-        if not token or not hmac.compare_digest(token, ctx.gcfg.auth_token):
-            raise HTTPException(401, "令牌错误")
+        if not auth_passes(ctx.gcfg.auth_token, ctx.gcfg.host, token):
+            raise HTTPException(401, "需要访问令牌")
 
     def account_dir(name: str) -> Path:
         try:
@@ -234,9 +242,8 @@ def build_router(ctx: AppContext) -> APIRouter:
 
     @router.get("/logs/stream")
     async def logs_stream(token: str = ""):
-        if not ctx.gcfg.auth_token or not hmac.compare_digest(
-                token, ctx.gcfg.auth_token):
-            raise HTTPException(401, "令牌错误")
+        if not auth_passes(ctx.gcfg.auth_token, ctx.gcfg.host, token):
+            raise HTTPException(401, "需要访问令牌")
         queue = log_bus.subscribe()
 
         async def gen():
